@@ -86,9 +86,9 @@ export function runAgent(config: AgentConfig): RunAgentHandle {
   const connect = () => {
     if (stopped) return;
 
-    socket = new WebSocket(
-      `${toWebSocketUrl(config.serverUrl)}/agent?token=${encodeURIComponent(config.token)}`
-    );
+    socket = new WebSocket(`${toWebSocketUrl(config.serverUrl)}/agent`, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
 
     socket.on("open", () => {
       attempt = 0;

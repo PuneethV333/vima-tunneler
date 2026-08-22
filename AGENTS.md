@@ -65,7 +65,9 @@ Key properties:
 
 ## Wire protocol
 
-Agent -> relay: `GET {serverUrl}/agent?token=<token>` (WebSocket upgrade).
+Agent -> relay: `GET {serverUrl}/agent` (WebSocket upgrade), authenticated via
+an `Authorization: Bearer <token>` header — never a query param, so the token
+can't leak into access logs.
 
 Relay -> agent, job message:
 
