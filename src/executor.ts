@@ -48,6 +48,8 @@ export async function executeRequest(job: JobRequest): Promise<JobResponse> {
     data: job.bodyBase64 ? Buffer.from(job.bodyBase64, "base64") : undefined,
     responseType: "arraybuffer",
     timeout: REQUEST_TIMEOUT_MS,
+    maxRedirects: 0,
+    validateStatus: () => true,
   });
 
   const headers: Record<string, string> = {};
