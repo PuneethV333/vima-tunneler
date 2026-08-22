@@ -100,6 +100,19 @@ Agent -> relay, on failure (target not local, request threw, timeout):
 { "type": "error", "jobId": "uuid", "message": "human-readable reason" }
 ```
 
+Result delivery is **at-least-once** via sequence-ID + in-memory buffer + ACK:
+
+- Every `response`/`error` frame carries an integer `"seq"`, monotonic per
+  agent process run.
+- Unacked frames are buffered in memory (cap 1000; oldest dropped first when
+  full) and replayed in order after every (re)connect.
+- Relay -> agent: `{"type": "ack", "upto": N}` cumulatively acknowledges all
+  frames with `seq <= N`.
+- Because redelivery can duplicate frames, the relay MUST treat results as
+  idempotent per `jobId`.
+- Frames evicted from a full buffer, or lost across an agent restart, are not
+  redelivered — documented v1 limitation.
+
 Agent -> relay heartbeat every ~25s while connected: `{"type": "pong"}`.
 The relay may send `{"type": "ping"}` — the agent no-ops on it.
 
