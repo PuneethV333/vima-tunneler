@@ -14,7 +14,7 @@ const program = new Command();
 
 program
   .name("vima-tunneler")
-  .description("Local agent that runs HTTP requests against localhost on behalf of the Vima web app.")
+  .description("Local agent that runs HTTP requests against localhost on behalf of the Vima-test web app.")
   .version("0.1.0");
 
 program
