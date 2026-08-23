@@ -78,7 +78,8 @@ Relay -> agent, job message:
   "method": "GET",
   "url": "http://localhost:3000/api/users",
   "headers": { "Authorization": "Bearer ..." },
-  "bodyBase64": "optional, base64-encoded request body"
+  "bodyBase64": "optional, base64-encoded request body",
+  "timeoutMs": "optional number; agent clamps to [1000, 300000], defaults to 30000"
 }
 ```
 

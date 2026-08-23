@@ -1,6 +1,10 @@
 import WebSocket from "ws";
 import { AgentConfig } from "./config";
-import { executeRequest, JobRequest } from "./executor";
+import {
+  clampTimeout,
+  executeRequest,
+  JobRequest,
+} from "./executor";
 
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_CAP_MS = 30_000;
@@ -31,6 +35,7 @@ interface RequestMessage {
   url?: unknown;
   headers?: unknown;
   bodyBase64?: unknown;
+  timeoutMs?: unknown;
 }
 
 export interface RunAgentHandle {
@@ -138,6 +143,7 @@ export function runAgent(
           ? (msg.headers as Record<string, string>)
           : undefined,
       bodyBase64: typeof msg.bodyBase64 === "string" ? msg.bodyBase64 : undefined,
+      timeoutMs: clampTimeout(msg.timeoutMs),
     };
     activeJobs += 1;
     try {

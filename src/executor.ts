@@ -6,6 +6,15 @@ export interface JobRequest {
   url: string;
   headers?: Record<string, string>;
   bodyBase64?: string;
+  timeoutMs?: number;
+}
+
+export const MIN_TIMEOUT_MS = 1_000;
+export const MAX_TIMEOUT_MS = 300_000;
+
+export function clampTimeout(raw: unknown): number | undefined {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined;
+  return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, raw));
 }
 
 export interface JobResponse {
@@ -55,7 +64,7 @@ export async function executeRequest(job: JobRequest): Promise<JobResponse> {
     headers: job.headers,
     data: job.bodyBase64 ? Buffer.from(job.bodyBase64, "base64") : undefined,
     responseType: "stream",
-    timeout: REQUEST_TIMEOUT_MS,
+    timeout: clampTimeout(job.timeoutMs) ?? REQUEST_TIMEOUT_MS,
     maxRedirects: 0,
     validateStatus: () => true,
   });
