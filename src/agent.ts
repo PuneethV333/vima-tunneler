@@ -13,6 +13,15 @@ export interface AgentRuntimeOptions {
   deadSocketMs?: number;
   backoffBaseMs?: number;
   backoffCapMs?: number;
+  inflightLimit?: number;
+}
+
+const DEFAULT_INFLIGHT_LIMIT = 8;
+
+function inflightLimit(): number {
+  const raw = Number(process.env.VIMA_MAX_INFLIGHT);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return DEFAULT_INFLIGHT_LIMIT;
 }
 
 interface RequestMessage {
@@ -78,9 +87,11 @@ export function runAgent(
   const deadSocketMs = opts.deadSocketMs ?? DEAD_SOCKET_MS;
   const backoffBaseMs = opts.backoffBaseMs ?? BACKOFF_BASE_MS;
   const backoffCapMs = opts.backoffCapMs ?? BACKOFF_CAP_MS;
+  const maxInflight = opts.inflightLimit ?? inflightLimit();
 
   let stopped = false;
   let attempt = 0;
+  let activeJobs = 0;
   let socket: WebSocket | null = null;
   let heartbeat: NodeJS.Timeout | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
@@ -128,6 +139,7 @@ export function runAgent(
           : undefined,
       bodyBase64: typeof msg.bodyBase64 === "string" ? msg.bodyBase64 : undefined,
     };
+    activeJobs += 1;
     try {
       const res = await executeRequest(job);
       deliverResult({ type: "response", jobId: job.jobId, ...res });
@@ -135,7 +147,20 @@ export function runAgent(
       const message =
         err instanceof Error ? err.message : "request failed unexpectedly";
       deliverResult({ type: "error", jobId: job.jobId, message });
+    } finally {
+      activeJobs -= 1;
     }
+  };
+
+  const rejectIfBusy = (msg: RequestMessage): boolean => {
+    if (typeof msg.jobId !== "string") return false;
+    if (activeJobs < maxInflight) return false;
+    deliverResult({
+      type: "error",
+      jobId: msg.jobId,
+      message: `agent busy: ${maxInflight} jobs already in flight`,
+    });
+    return true;
   };
 
   const onMessage = (data: WebSocket.RawData) => {
@@ -148,7 +173,10 @@ export function runAgent(
     if (typeof msg !== "object" || msg === null) return;
     const typed = msg as { type?: unknown; upto?: unknown };
     if (typed.type === "request") {
-      void handleJob(msg as RequestMessage);
+      const req = msg as RequestMessage;
+      if (!rejectIfBusy(req)) {
+        void handleJob(req);
+      }
     } else if (typed.type === "ack" && typeof typed.upto === "number") {
       outbox.ackUpto(typed.upto);
     }

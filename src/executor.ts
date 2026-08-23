@@ -17,8 +17,16 @@ export interface JobResponse {
 const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
 
 export const REQUEST_TIMEOUT_MS = 30_000;
+export const DEFAULT_MAX_BODY_BYTES = 25 * 1024 * 1024;
 
 export class NonLocalTargetError extends Error {}
+export class BodyTooLargeError extends Error {}
+
+function maxBodyBytes(): number {
+  const raw = Number(process.env.VIMA_MAX_BODY_BYTES);
+  if (Number.isFinite(raw) && raw > 0) return raw;
+  return DEFAULT_MAX_BODY_BYTES;
+}
 
 function isLocalTarget(rawUrl: string): boolean {
   let parsed: URL;
@@ -41,16 +49,31 @@ export async function executeRequest(job: JobRequest): Promise<JobResponse> {
     );
   }
 
-  const response = await axios.request<ArrayBuffer>({
+  const response = await axios.request<import("node:stream").Readable>({
     method: job.method,
     url: job.url,
     headers: job.headers,
     data: job.bodyBase64 ? Buffer.from(job.bodyBase64, "base64") : undefined,
-    responseType: "arraybuffer",
+    responseType: "stream",
     timeout: REQUEST_TIMEOUT_MS,
     maxRedirects: 0,
     validateStatus: () => true,
   });
+
+  const limit = maxBodyBytes();
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of response.data) {
+    const buf = chunk as Buffer;
+    total += buf.length;
+    if (total > limit) {
+      response.data.destroy();
+      throw new BodyTooLargeError(
+        `response body exceeded ${limit} bytes from ${job.url}`
+      );
+    }
+    chunks.push(buf);
+  }
 
   const headers: Record<string, string> = {};
   for (const [key, value] of Object.entries(response.headers)) {
@@ -64,6 +87,6 @@ export async function executeRequest(job: JobRequest): Promise<JobResponse> {
   return {
     status: response.status,
     headers,
-    bodyBase64: Buffer.from(response.data).toString("base64"),
+    bodyBase64: Buffer.concat(chunks).toString("base64"),
   };
 }
