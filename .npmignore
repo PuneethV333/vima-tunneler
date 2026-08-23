@@ -1,0 +1,8 @@
+src/
+test/
+dist-test/
+.github/
+tsconfig.json
+tsconfig.test.json
+AGENTS.md
+.gitignore
