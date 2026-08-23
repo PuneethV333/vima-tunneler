@@ -4,5 +4,5 @@ dist-test/
 .github/
 tsconfig.json
 tsconfig.test.json
-AGENTS.md
+PROTOCOL.md
 .gitignore

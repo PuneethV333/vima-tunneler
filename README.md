@@ -92,7 +92,7 @@ replayed after reconnects; the relay acknowledges cumulatively with
 Half-open connections are detected via WS pings (~60 s of silence forces a
 reconnect).
 
-See [AGENTS.md](AGENTS.md) for the full wire-protocol contract.
+See [PROTOCOL.md](PROTOCOL.md) for the full wire-protocol contract.
 
 ## Limitations (v1)
 
