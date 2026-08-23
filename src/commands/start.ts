@@ -5,7 +5,7 @@ export function start(): void {
   const config = readConfig();
   if (!config) {
     console.error(
-      "Not paired yet. Run `vima-tunneler pair --code <code> --server <url>` first."
+      "Not paired yet. Run `vima-tunneler pair --code <code> --server <url>` first.",
     );
     process.exitCode = 1;
     return;
@@ -19,7 +19,9 @@ export function start(): void {
       process.exit(130);
     }
     closing = true;
-    console.log(`${signal} received; draining in-flight jobs (Ctrl+C again to force)...`);
+    console.log(
+      `${signal} received; draining in-flight jobs (Ctrl+C again to force)...`,
+    );
     await handle.gracefulStop(10_000);
     process.exit(0);
   };

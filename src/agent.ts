@@ -1,10 +1,6 @@
 import WebSocket from "ws";
 import { AgentConfig } from "./config";
-import {
-  clampTimeout,
-  executeRequest,
-  JobRequest,
-} from "./executor";
+import { clampTimeout, executeRequest, JobRequest } from "./executor";
 
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_CAP_MS = 30_000;
@@ -90,7 +86,7 @@ function toWebSocketUrl(serverUrl: string): string {
 
 export function runAgent(
   config: AgentConfig,
-  opts: AgentRuntimeOptions = {}
+  opts: AgentRuntimeOptions = {},
 ): RunAgentHandle {
   const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
   const deadSocketMs = opts.deadSocketMs ?? DEAD_SOCKET_MS;
@@ -131,7 +127,7 @@ export function runAgent(
     }
     if (outbox.dropped() > 0) {
       console.warn(
-        `outbox overflowed earlier; ${outbox.dropped()} oldest result(s) were lost`
+        `outbox overflowed earlier; ${outbox.dropped()} oldest result(s) were lost`,
       );
     }
   };
@@ -146,7 +142,8 @@ export function runAgent(
         typeof msg.headers === "object" && msg.headers !== null
           ? (msg.headers as Record<string, string>)
           : undefined,
-      bodyBase64: typeof msg.bodyBase64 === "string" ? msg.bodyBase64 : undefined,
+      bodyBase64:
+        typeof msg.bodyBase64 === "string" ? msg.bodyBase64 : undefined,
       timeoutMs: clampTimeout(msg.timeoutMs),
     };
     activeJobs += 1;
@@ -214,7 +211,7 @@ export function runAgent(
         const silentFor = Date.now() - lastActivityAt;
         if (silentFor > deadSocketMs) {
           console.warn(
-            `no traffic from relay for ${silentFor}ms; forcing reconnect`
+            `no traffic from relay for ${silentFor}ms; forcing reconnect`,
           );
           socket?.terminate();
         }
@@ -233,7 +230,7 @@ export function runAgent(
       socket = null;
       if (stopped) return;
       const delay = Math.floor(
-        Math.random() * Math.min(backoffCapMs, backoffBaseMs * 2 ** attempt)
+        Math.random() * Math.min(backoffCapMs, backoffBaseMs * 2 ** attempt),
       );
       attempt += 1;
       console.log(`reconnecting in ${delay}ms...`);
@@ -258,10 +255,9 @@ export function runAgent(
     };
     const giveUp = setTimeout(finish, windowMs);
     try {
-      const ws = new WebSocket(
-        `${toWebSocketUrl(config.serverUrl)}/agent`,
-        { headers: { Authorization: `Bearer ${config.token}` } }
-      );
+      const ws = new WebSocket(`${toWebSocketUrl(config.serverUrl)}/agent`, {
+        headers: { Authorization: `Bearer ${config.token}` },
+      });
       ws.on("open", () => {
         for (const frame of outbox.frames()) {
           ws.send(JSON.stringify({ ...frame.payload, seq: frame.seq }));
@@ -298,13 +294,9 @@ export function runAgent(
 
       const socketOpen =
         socket !== null && socket.readyState === WebSocket.OPEN;
-      if (
-        !socketOpen &&
-        outbox.frames().length > 0 &&
-        Date.now() < deadline
-      ) {
+      if (!socketOpen && outbox.frames().length > 0 && Date.now() < deadline) {
         await new Promise<void>((resolve) =>
-          oneShotFlush(resolve, Math.max(2_000, deadline - Date.now()))
+          oneShotFlush(resolve, Math.max(2_000, deadline - Date.now())),
         );
       }
 

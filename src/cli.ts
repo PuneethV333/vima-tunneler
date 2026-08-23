@@ -14,12 +14,16 @@ const program = new Command();
 
 program
   .name("vima-tunneler")
-  .description("Local agent that runs HTTP requests against localhost on behalf of the Vima-test web app.")
+  .description(
+    "Local agent that runs HTTP requests against localhost on behalf of the Vima-test web app.",
+  )
   .version("0.1.0");
 
 program
   .command("pair")
-  .description("Exchange a pairing code for a long-lived token and store it locally.")
+  .description(
+    "Exchange a pairing code for a long-lived token and store it locally.",
+  )
   .requiredOption("--code <code>", "pairing code shown in the web app")
   .option("--server <url>", "relay server URL")
   .action(async (opts: { code: string; server?: string }) => {
@@ -34,7 +38,9 @@ program
 
 program
   .command("start")
-  .description("Connect to the relay server and execute incoming jobs until stopped.")
+  .description(
+    "Connect to the relay server and execute incoming jobs until stopped.",
+  )
   .action(() => {
     start();
   });
