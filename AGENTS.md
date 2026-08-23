@@ -166,7 +166,9 @@ src/
 1. `executeRequest` must reject any URL whose hostname isn't in the local
    allowlist, before axios ever touches it.
 2. Config file must be written with restrictive permissions (`0600` file,
-   `0700` dir) — it holds a long-lived auth token.
+   `0700` dir) — it holds a long-lived auth token. On Windows (no POSIX
+   modes) this is best-effort: inheritance is stripped and the current user
+   granted exclusive access via `icacls`.
 3. Reconnect logic must use exponential backoff (base 1s, cap 30s), not a
    fixed interval or busy loop.
 4. No project-scoping, no CWD-relative config — everything lives under

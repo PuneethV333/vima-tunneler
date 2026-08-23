@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFile } from "node:child_process";
 
 export interface AgentConfig {
   agentId: string;
@@ -37,6 +38,26 @@ export function writeConfig(config: AgentConfig): void {
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + "\n", {
     mode: 0o600,
   });
+  restrictWindowsAcls(configDir());
+  restrictWindowsAcls(configPath());
+}
+
+function restrictWindowsAcls(target: string): void {
+  if (process.platform !== "win32") return;
+  const user = process.env.USERNAME;
+  if (!user) {
+    console.error("config ACL hardening skipped: USERNAME not set");
+    return;
+  }
+  execFile(
+    "icacls",
+    [target, "/inheritance:r", "/grant:r", `${user}:F`],
+    (err) => {
+      if (err) {
+        console.error(`config ACL hardening failed for ${target}: ${err.message}`);
+      }
+    }
+  );
 }
 
 export function clearConfig(): void {
