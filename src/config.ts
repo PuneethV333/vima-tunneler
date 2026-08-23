@@ -29,6 +29,9 @@ export function readConfig(): AgentConfig | null {
 }
 
 export function writeConfig(config: AgentConfig): void {
+  if (!isAgentConfig(config)) {
+    throw new Error("invalid agent config: agentId/token/serverUrl/pairedAt required");
+  }
   fs.mkdirSync(configDir(), { recursive: true, mode: 0o700 });
   fs.chmodSync(configDir(), 0o700);
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + "\n", {

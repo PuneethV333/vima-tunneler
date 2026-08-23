@@ -38,29 +38,66 @@ function maxBodyBytes(): number {
 }
 
 function isLocalTarget(rawUrl: string): boolean {
+  return candidateTargets(rawUrl).length > 0;
+}
+
+function candidateTargets(rawUrl: string): string[] {
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);
   } catch {
-    return false;
+    return [];
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return false;
+    return [];
   }
   const host = parsed.hostname.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
-  return LOCAL_HOSTNAMES.has(host);
+  if (!LOCAL_HOSTNAMES.has(host)) {
+    return [];
+  }
+  if (host !== "localhost") {
+    return [parsed.toString()];
+  }
+
+  const candidates: string[] = [];
+  for (const ip of ["127.0.0.1", "::1"]) {
+    const alt = new URL(parsed.toString());
+    alt.hostname = ip === "::1" ? "[::1]" : ip;
+    candidates.push(alt.toString());
+  }
+  candidates.push(parsed.toString());
+  return candidates;
 }
 
 export async function executeRequest(job: JobRequest): Promise<JobResponse> {
-  if (!isLocalTarget(job.url)) {
+  const candidates = candidateTargets(job.url);
+  if (candidates.length === 0) {
     throw new NonLocalTargetError(
       `refusing to proxy non-local target: ${job.url}`
     );
   }
 
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      return await runOnce(job, candidate);
+    } catch (err) {
+      lastError = err;
+      if (err instanceof BodyTooLargeError) throw err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("request failed unexpectedly");
+}
+
+async function runOnce(
+  job: JobRequest,
+  url: string
+): Promise<JobResponse> {
   const response = await axios.request<import("node:stream").Readable>({
     method: job.method,
-    url: job.url,
+    url,
     headers: job.headers,
     data: job.bodyBase64 ? Buffer.from(job.bodyBase64, "base64") : undefined,
     responseType: "stream",

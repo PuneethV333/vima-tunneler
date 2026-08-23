@@ -12,7 +12,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/test/**/*.test.js\""
   },
   "dependencies": {
     "axios": "^1.7.9",

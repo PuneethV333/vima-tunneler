@@ -148,6 +148,19 @@ src/
   index.ts           re-exports for programmatic use (runAgent, executeRequest, config helpers, types)
 ```
 
+`test/` holds `node:test` suites (`npm test` compiles them via
+`tsconfig.test.json` into `dist-test/`, which is gitignored).
+
+## Runtime knobs
+
+- `VIMA_MAX_INFLIGHT` — concurrent job cap (default 8); excess jobs get an
+  immediate `error` frame.
+- `VIMA_MAX_BODY_BYTES` — response body cap (default 25 MB); larger bodies
+  abort mid-stream with an `error` frame.
+- Per-job `timeoutMs` on request frames overrides the 30s default; agent
+  clamps to `[1000, 300000]`.
+- Reconnect backoff uses full jitter within base 1s / cap 30s.
+
 ## Non-negotiables
 
 1. `executeRequest` must reject any URL whose hostname isn't in the local
