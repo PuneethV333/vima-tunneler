@@ -5,7 +5,15 @@ import { executeRequest, JobRequest } from "./executor";
 const BACKOFF_BASE_MS = 1_000;
 const BACKOFF_CAP_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 25_000;
+const DEAD_SOCKET_MS = 60_000;
 const MAX_BUFFERED_FRAMES = 1_000;
+
+export interface AgentRuntimeOptions {
+  heartbeatIntervalMs?: number;
+  deadSocketMs?: number;
+  backoffBaseMs?: number;
+  backoffCapMs?: number;
+}
 
 interface RequestMessage {
   type: "request";
@@ -62,12 +70,21 @@ function toWebSocketUrl(serverUrl: string): string {
   return serverUrl.replace(/^http:\/\//i, "ws://");
 }
 
-export function runAgent(config: AgentConfig): RunAgentHandle {
+export function runAgent(
+  config: AgentConfig,
+  opts: AgentRuntimeOptions = {}
+): RunAgentHandle {
+  const heartbeatIntervalMs = opts.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS;
+  const deadSocketMs = opts.deadSocketMs ?? DEAD_SOCKET_MS;
+  const backoffBaseMs = opts.backoffBaseMs ?? BACKOFF_BASE_MS;
+  const backoffCapMs = opts.backoffCapMs ?? BACKOFF_CAP_MS;
+
   let stopped = false;
   let attempt = 0;
   let socket: WebSocket | null = null;
   let heartbeat: NodeJS.Timeout | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
+  let lastActivityAt = Date.now();
   const outbox = new Outbox();
 
   const stopHeartbeat = () => {
@@ -135,6 +152,7 @@ export function runAgent(config: AgentConfig): RunAgentHandle {
     } else if (typed.type === "ack" && typeof typed.upto === "number") {
       outbox.ackUpto(typed.upto);
     }
+    lastActivityAt = Date.now();
     // {"type":"ping"} -> no-op
   };
 
@@ -147,13 +165,27 @@ export function runAgent(config: AgentConfig): RunAgentHandle {
 
     socket.on("open", () => {
       attempt = 0;
+      lastActivityAt = Date.now();
       console.log(`connected to relay ${config.serverUrl}`);
       stopHeartbeat();
-      heartbeat = setInterval(
-        () => sendRaw({ type: "pong" }),
-        HEARTBEAT_INTERVAL_MS
-      );
+      heartbeat = setInterval(() => {
+        sendRaw({ type: "pong" });
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.ping();
+        }
+        const silentFor = Date.now() - lastActivityAt;
+        if (silentFor > deadSocketMs) {
+          console.warn(
+            `no traffic from relay for ${silentFor}ms; forcing reconnect`
+          );
+          socket?.terminate();
+        }
+      }, heartbeatIntervalMs);
       flushOutbox();
+    });
+
+    socket.on("pong", () => {
+      lastActivityAt = Date.now();
     });
 
     socket.on("message", onMessage);
@@ -162,7 +194,7 @@ export function runAgent(config: AgentConfig): RunAgentHandle {
       stopHeartbeat();
       socket = null;
       if (stopped) return;
-      const delay = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** attempt);
+      const delay = Math.min(backoffCapMs, backoffBaseMs * 2 ** attempt);
       attempt += 1;
       console.log(`reconnecting in ${delay}ms...`);
       reconnectTimer = setTimeout(connect, delay);
