@@ -59,6 +59,8 @@ Key properties:
   code for a token, store it in local config, print the resulting agent ID.
 - `vima-tunneler start` — load stored config, connect to the relay, listen
   for jobs indefinitely, execute them, reconnect with exponential backoff.
+  SIGINT/SIGTERM drain in-flight jobs and flush pending results (max ~10s;
+  press Ctrl+C again to force exit).
 - `vima-tunneler status` — print pairing state (agent ID, server URL,
   paired-at timestamp) without connecting.
 - `vima-tunneler logout` — delete the stored config file.

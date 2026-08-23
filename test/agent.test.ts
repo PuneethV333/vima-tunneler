@@ -281,3 +281,132 @@ test("heartbeat pongs flow to relay", async () => {
     closeRelay(wss);
   }
 });
+
+
+test("gracefulStop drains the in-flight job before closing", async () => {
+  const results: object[] = [];
+  let releaseHeld: (() => void) | null = null;
+  const held: http.ServerResponse[] = [];
+
+  const target = http.createServer((req, res) => {
+    held.push(res);
+    if (held.length === 1) {
+      setTimeout(() => {
+        releaseHeld = () => {
+          for (const r of held.splice(0)) {
+            r.writeHead(200);
+            r.end("late");
+          }
+        };
+        releaseHeld();
+      }, 200);
+    }
+  });
+  const tport = await new Promise<number>((resolve) => {
+    target.listen(0, "127.0.0.1", () =>
+      resolve((target.address() as AddressInfo).port)
+    );
+  });
+
+  const wss = new WebSocketServer({ port: 0 });
+  const relayEvents: string[] = [];
+  wss.on("connection", (ws) => {
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === "response" || msg.type === "error") {
+        results.push(msg);
+        relayEvents.push("result");
+      }
+    });
+    ws.on("close", () => relayEvents.push("close"));
+  });
+  const port = await listen(wss);
+
+  const handle = runAgent(cfgFor(port), { inflightLimit: 4 });
+  let sendToAgent: ((p: object) => void) | null = null;
+  await waitFor(() => {
+    for (const c of wss.clients) {
+      sendToAgent = (p) => c.send(JSON.stringify(p));
+      return true;
+    }
+    return false;
+  }, "agent connection");
+
+  sendToAgent!({
+    type: "request",
+    jobId: "slow-1",
+    method: "GET",
+    url: `http://127.0.0.1:${tport}/slow`,
+  });
+  await new Promise((r) => setTimeout(r, 100));
+
+  const stopPromise = handle.gracefulStop(5_000);
+  await stopPromise;
+
+  assert.ok(results.length >= 1, "in-flight result must be delivered during gracefulStop");
+  assert.ok(
+    relayEvents.indexOf("result") < relayEvents.lastIndexOf("close"),
+    `relay saw close before/without result: ${JSON.stringify(relayEvents)}`
+  );
+
+  closeRelay(wss);
+  target.close();
+});
+
+test("gracefulStop flushes pending outbox over a fresh connection", async () => {
+  const seenSeqsOnLateConn: number[] = [];
+  let connN = 0;
+
+  const target = http.createServer((req, res) => {
+    res.writeHead(200);
+    res.end("ok");
+  });
+  const tport = await new Promise<number>((resolve) => {
+    target.listen(0, "127.0.0.1", () =>
+      resolve((target.address() as AddressInfo).port)
+    );
+  });
+
+  const wss = new WebSocketServer({ port: 0 });
+  wss.on("connection", (ws) => {
+    connN += 1;
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.type === "response" && msg.jobId === "flush-1") {
+        seenSeqsOnLateConn.push(msg.seq);
+      }
+    });
+  });
+  const port = await listen(wss);
+
+  const handle = runAgent(cfgFor(port), { backoffBaseMs: 40, backoffCapMs: 120 });
+  let firstConn: WebSocket | null = null;
+  await waitFor(() => {
+    for (const c of wss.clients) {
+      firstConn = c;
+      return true;
+    }
+    return false;
+  }, "first agent connection");
+
+  firstConn!.send(
+    JSON.stringify({
+      type: "request",
+      jobId: "flush-1",
+      method: "GET",
+      url: `http://127.0.0.1:${tport}/echo`,
+    })
+  );
+  await new Promise((r) => setTimeout(r, 150));
+  firstConn!.terminate();
+
+  await handle.gracefulStop(6_000);
+
+  assert.ok(
+    seenSeqsOnLateConn.length === 1,
+    `expected flushed frame on a later connection, got ${JSON.stringify(seenSeqsOnLateConn)}`
+  );
+
+  closeRelay(wss);
+  target.close();
+});

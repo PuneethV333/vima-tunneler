@@ -40,7 +40,11 @@ interface RequestMessage {
 
 export interface RunAgentHandle {
   stop(): void;
+  gracefulStop(timeoutMs?: number): Promise<void>;
 }
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 interface BufferedFrame {
   seq: number;
@@ -244,12 +248,86 @@ export function runAgent(
 
   connect();
 
+  const oneShotFlush = (done: () => void, windowMs: number) => {
+    let finished = false;
+    const finish = () => {
+      if (!finished) {
+        finished = true;
+        done();
+      }
+    };
+    const giveUp = setTimeout(finish, windowMs);
+    try {
+      const ws = new WebSocket(
+        `${toWebSocketUrl(config.serverUrl)}/agent`,
+        { headers: { Authorization: `Bearer ${config.token}` } }
+      );
+      ws.on("open", () => {
+        for (const frame of outbox.frames()) {
+          ws.send(JSON.stringify({ ...frame.payload, seq: frame.seq }));
+        }
+        setTimeout(() => {
+          clearTimeout(giveUp);
+          ws.close();
+          finish();
+        }, 250);
+      });
+      ws.on("error", () => {});
+    } catch {
+      clearTimeout(giveUp);
+      finish();
+    }
+  };
+
   return {
     stop() {
       stopped = true;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
       stopHeartbeat();
       if (socket) socket.close();
+    },
+    gracefulStop: async (timeoutMs = 10_000): Promise<void> => {
+      stopped = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      stopHeartbeat();
+
+      const deadline = Date.now() + timeoutMs;
+      while (activeJobs > 0 && Date.now() < deadline) {
+        await sleep(50);
+      }
+
+      const socketOpen =
+        socket !== null && socket.readyState === WebSocket.OPEN;
+      if (
+        !socketOpen &&
+        outbox.frames().length > 0 &&
+        Date.now() < deadline
+      ) {
+        await new Promise<void>((resolve) =>
+          oneShotFlush(resolve, Math.max(2_000, deadline - Date.now()))
+        );
+      }
+
+      const remaining = deadline - Date.now();
+      if (
+        socket !== null &&
+        socket.readyState !== WebSocket.CLOSED &&
+        remaining > 0
+      ) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, remaining);
+          socket!.once("close", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          try {
+            socket!.close();
+          } catch {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      }
     },
   };
 }
