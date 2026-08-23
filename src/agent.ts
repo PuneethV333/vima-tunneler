@@ -228,7 +228,9 @@ export function runAgent(
       stopHeartbeat();
       socket = null;
       if (stopped) return;
-      const delay = Math.min(backoffCapMs, backoffBaseMs * 2 ** attempt);
+      const delay = Math.floor(
+        Math.random() * Math.min(backoffCapMs, backoffBaseMs * 2 ** attempt)
+      );
       attempt += 1;
       console.log(`reconnecting in ${delay}ms...`);
       reconnectTimer = setTimeout(connect, delay);
