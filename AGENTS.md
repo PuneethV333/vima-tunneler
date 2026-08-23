@@ -1,11 +1,12 @@
 # vima-tunneler
 
-## Repo status: spec only
+## Repo status
 
-No code exists yet — no `package.json`, no `src/`, no tests. This file is
-the source of truth for what to build; a typical session here scaffolds the
-project per **Tech stack** and **File layout** below. Don't add runtime
-dependencies, frameworks, or build tooling beyond exactly those.
+Implemented and working per the spec below (TypeScript in `src/`, 15
+`node:test` suites in `test/`, CI on Node 20/24). Commands: `npm ci`,
+`npm run build` (`tsc` -> `dist/`), `npm test` (compiles via
+`tsconfig.test.json` to gitignored `dist-test/`). Don't add runtime
+dependencies beyond exactly those listed under **Tech stack**.
 
 ## What this is
 
@@ -50,13 +51,14 @@ Key properties:
 - **Auth = pairing token, not per-request checks.** A short-lived pairing
   code (shown in the web app) is exchanged once for a long-lived token via
   `POST {httpServerUrl}/api/agent/pair`. That token authenticates the
-  WebSocket connection (`GET {serverUrl}/agent?token=<token>`) for every
-  subsequent session.
+  WebSocket connection for every subsequent session (see **Wire protocol**
+  — header, not query param).
 
 ## CLI surface
 
 - `vima-tunneler pair --code <code> [--server <url>]` — exchange a pairing
   code for a token, store it in local config, print the resulting agent ID.
+  `--server` is effectively required (no default relay URL is baked in).
 - `vima-tunneler start` — load stored config, connect to the relay, listen
   for jobs indefinitely, execute them, reconnect with exponential backoff.
   SIGINT/SIGTERM drain in-flight jobs and flush pending results (max ~10s;
@@ -117,11 +119,16 @@ Result delivery is **at-least-once** via sequence-ID + in-memory buffer + ACK:
   redelivered — documented v1 limitation.
 
 Agent -> relay heartbeat every ~25s while connected: `{"type": "pong"}`.
-The relay may send `{"type": "ping"}` — the agent no-ops on it.
+The relay may send `{"type": "ping"}` — the agent no-ops on it. The agent
+also sends protocol-level WS pings and terminates + reconnects if it gets
+no inbound traffic for ~60s (half-open socket protection), so the relay
+must answer pings (ws servers do by default).
 
 Bodies are always base64 (safe for binary payloads). Requests time out at
-30s. Responses are read fully into memory — no streaming in v1. That is a
-documented limitation, not something to silently work around.
+30s unless a job carries `timeoutMs`. Response bodies download as streams
+but are capped (default 25 MB) and buffered whole before delivery — no
+incremental streaming to the web app in v1. That is a documented
+limitation, not something to silently work around.
 
 ## Tech stack
 
